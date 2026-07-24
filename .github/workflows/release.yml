@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build package
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          package="sni-unlock_${GITHUB_REF_NAME}_${GOOS}_${GOARCH}"
+          mkdir -p "dist/$package"
+          output="sni-unlock"
+          if [ "$GOOS" = "windows" ]; then output="${output}.exe"; fi
+          go build -trimpath -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" \
+            -o "dist/$package/$output" ./cmd/sniproxy-dns
+          cp README.md config.example.yaml "dist/$package/"
+          if [ "$GOOS" = "linux" ]; then cp sniproxy-dns.service "dist/$package/"; fi
+          tar -C dist -czf "dist/${package}.tar.gz" "$package"
+          rm -rf "dist/$package"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sni-unlock-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum ./*.tar.gz > checksums.txt
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --verify-tag

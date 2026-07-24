@@ -1,0 +1,29 @@
+dns:
+  # 仅提供 TCP DNS，可使用任意未占用端口。
+  listen: ":5353"
+  # 未命中代理名单时，原始 DNS 请求会转发到这里。
+  upstream: "1.1.1.1:53"
+  network: "tcp"
+  # 命中代理名单的 A/AAAA 查询返回以下地址（本机 IP 地址）。
+  proxy_ipv4: "203.0.113.10"
+  proxy_ipv6: ""
+  ttl: 60
+
+proxy:
+  http_listen: ":80"
+  tls_listen: ":443"
+  http_target_port: 80
+  tls_target_port: 443
+  dial_timeout: "10s"
+
+# 精确域名及其所有子域名都会被代理。
+proxy_domains:
+  - netflix.com
+  - netflix.net
+  - nflxvideo.net
+  - disneyplus.com
+
+# 可选。留空表示允许任意客户端；支持单个 IP 和 CIDR。
+allow_clients:
+  - 192.0.2.10
+  - 2001:db8:1234::/48

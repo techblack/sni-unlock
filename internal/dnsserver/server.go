@@ -18,14 +18,18 @@ type Handler struct {
 	client    *dns.Client
 }
 
-func New(config config.DNSConfig, matcher *domains.Matcher, allowlist *access.Allowlist) *dns.Server {
+func New(config config.DNSConfig, matcher *domains.Matcher, allowlist *access.Allowlist) []*dns.Server {
 	handler := &Handler{
 		config:    config,
 		domains:   matcher,
 		allowlist: allowlist,
 		client:    &dns.Client{Net: config.Network},
 	}
-	return &dns.Server{Addr: config.Listen, Net: "tcp", Handler: handler}
+	servers := []*dns.Server{{Addr: config.Listen, Net: "tcp", Handler: handler}}
+	if config.UDPEnabled {
+		servers = append(servers, &dns.Server{Addr: config.Listen, Net: "udp", Handler: handler})
+	}
+	return servers
 }
 
 func (handler *Handler) ServeDNS(writer dns.ResponseWriter, request *dns.Msg) {

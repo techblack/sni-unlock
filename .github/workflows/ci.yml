@@ -24,14 +24,25 @@ jobs:
         run: go test -race ./...
       - name: Vet
         run: go vet ./...
+      - name: Check installer
+        run: |
+          shellcheck -s sh install.sh packaging/sni-unlock.openrc tests/install_test.sh
+          sh tests/install_test.sh
 
   build:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        goos: [linux, darwin, windows]
-        goarch: [amd64, arm64]
+        include:
+          - { goos: linux, goarch: amd64, arch: amd64 }
+          - { goos: linux, goarch: arm64, arch: arm64 }
+          - { goos: linux, goarch: "386", arch: "386" }
+          - { goos: linux, goarch: arm, goarm: "7", arch: armv7 }
+          - { goos: darwin, goarch: amd64, arch: amd64 }
+          - { goos: darwin, goarch: arm64, arch: arm64 }
+          - { goos: windows, goarch: amd64, arch: amd64 }
+          - { goos: windows, goarch: arm64, arch: arm64 }
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,6 +55,7 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
           CGO_ENABLED: "0"
         run: |
           output="sni-unlock"

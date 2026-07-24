@@ -1,6 +1,7 @@
 dns:
-  # 仅提供 TCP DNS，可使用任意未占用端口。
+  # TCP DNS 始终启用；可选择在同一地址和端口启用 UDP DNS。
   listen: ":5353"
+  udp_enabled: true
   # 未命中代理名单时，原始 DNS 请求会转发到这里。
   upstream: "1.1.1.1:53"
   network: "tcp"
@@ -16,12 +17,13 @@ proxy:
   tls_target_port: 443
   dial_timeout: "10s"
 
-# 精确域名及其所有子域名都会被代理。
+# 可选：内联域名及其所有子域名都会被代理。
 proxy_domains:
-  - netflix.com
-  - netflix.net
-  - nflxvideo.net
-  - disneyplus.com
+  - example.com
+
+# 可选：外部文本名单，相对路径按 config.yaml 所在目录解析。
+# 每行一个域名，支持空行和以 # 开头或结尾的注释。
+proxy_domains_file: "proxy-domains.example.txt"
 
 # 可选。留空表示允许任意客户端；支持单个 IP 和 CIDR。
 allow_clients:

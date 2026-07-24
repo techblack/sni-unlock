@@ -39,7 +39,7 @@ func main() {
 	}
 	matcher := domains.New(serviceConfig.ProxyDomains)
 
-	dnsService := dnsserver.New(serviceConfig.DNS, matcher, allowlist)
+	dnsServices := dnsserver.New(serviceConfig.DNS, matcher, allowlist)
 	httpProxy, err := proxy.New("http", serviceConfig.Proxy.HTTPListen, serviceConfig.Proxy.HTTPPort, serviceConfig.DNS, serviceConfig.Proxy, matcher, allowlist)
 	if err != nil {
 		slog.Error("创建 HTTP 代理失败", "error", err)
@@ -51,11 +51,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	errorsChannel := make(chan error, 3)
-	go func() {
-		slog.Info("TCP DNS 监听已启动", "address", serviceConfig.DNS.Listen)
-		errorsChannel <- dnsService.ListenAndServe()
-	}()
+	errorsChannel := make(chan error, len(dnsServices)+2)
+	for _, dnsService := range dnsServices {
+		go func() {
+			slog.Info("DNS 监听已启动", "network", dnsService.Net, "address", serviceConfig.DNS.Listen)
+			errorsChannel <- dnsService.ListenAndServe()
+		}()
+	}
 	go func() { errorsChannel <- httpProxy.ListenAndServe() }()
 	go func() { errorsChannel <- tlsProxy.ListenAndServe() }()
 
@@ -69,7 +71,9 @@ func main() {
 			slog.Error("服务异常退出", "error", err)
 		}
 	}
-	_ = dnsService.Shutdown()
+	for _, dnsService := range dnsServices {
+		_ = dnsService.Shutdown()
+	}
 	_ = httpProxy.Close()
 	_ = tlsProxy.Close()
 }

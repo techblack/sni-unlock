@@ -1,0 +1,16 @@
+#!/sbin/openrc-run
+# shellcheck disable=SC2034
+
+name="sni-unlock"
+description="DNS and SNI proxy"
+command="/opt/sni-unlock/sni-unlock"
+command_args="-config /opt/sni-unlock/config.yaml"
+command_background="yes"
+pidfile="/run/${RC_SVCNAME}.pid"
+output_log="/var/log/sni-unlock.log"
+error_log="/var/log/sni-unlock.err"
+
+depend() {
+	need net
+	after firewall
+}

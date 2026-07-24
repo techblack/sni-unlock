@@ -1,11 +1,11 @@
 [Unit]
-Description=TCP DNS and SNI proxy
+Description=sni-unlock DNS and SNI proxy
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/sni-unlock -config /etc/sni-unlock/config.yaml
+ExecStart=/opt/sni-unlock/sni-unlock -config /opt/sni-unlock/config.yaml
 Restart=on-failure
 RestartSec=3
 DynamicUser=true

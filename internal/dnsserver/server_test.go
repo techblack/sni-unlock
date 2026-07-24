@@ -3,6 +3,7 @@ package dnsserver
 import (
 	"net"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 
@@ -13,6 +14,57 @@ import (
 
 type responseWriter struct {
 	message *dns.Msg
+}
+
+func TestNewCreatesOptionalUDPServer(t *testing.T) {
+	allowlist, err := access.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matcher := domains.New([]string{"example.com"})
+	servers := New(config.DNSConfig{Listen: ":53"}, matcher, allowlist)
+	if len(servers) != 1 || servers[0].Net != "tcp" {
+		t.Fatalf("unexpected TCP-only servers: %#v", servers)
+	}
+	servers = New(config.DNSConfig{Listen: ":53", UDPEnabled: true}, matcher, allowlist)
+	if len(servers) != 2 || servers[0].Net != "tcp" || servers[1].Net != "udp" {
+		t.Fatalf("unexpected TCP+UDP servers: %#v", servers)
+	}
+}
+
+func TestUDPProxyDomainResponse(t *testing.T) {
+	allowlist, err := access.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	servers := New(config.DNSConfig{ProxyIPv4: "203.0.113.10", TTL: 60, UDPEnabled: true}, domains.New([]string{"example.com"}), allowlist)
+	packetConnection, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	udpServer := servers[1]
+	udpServer.PacketConn = packetConnection
+	serveErrors := make(chan error, 1)
+	go func() { serveErrors <- udpServer.ActivateAndServe() }()
+	t.Cleanup(func() {
+		_ = udpServer.Shutdown()
+		select {
+		case <-serveErrors:
+		case <-time.After(time.Second):
+			t.Error("UDP server did not stop")
+		}
+	})
+
+	request := new(dns.Msg)
+	request.SetQuestion("video.example.com.", dns.TypeA)
+	client := &dns.Client{Net: "udp", Timeout: time.Second}
+	response, _, err := client.Exchange(request, packetConnection.LocalAddr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Answer) != 1 || response.Answer[0].(*dns.A).A.String() != "203.0.113.10" {
+		t.Fatalf("unexpected UDP response: %#v", response.Answer)
+	}
 }
 
 func (writer *responseWriter) LocalAddr() net.Addr { return &net.TCPAddr{} }

@@ -1,27 +1,32 @@
 package config
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	DNS          DNSConfig   `yaml:"dns"`
-	Proxy        ProxyConfig `yaml:"proxy"`
-	ProxyDomains []string    `yaml:"proxy_domains"`
-	AllowClients []string    `yaml:"allow_clients"`
+	DNS              DNSConfig   `yaml:"dns"`
+	Proxy            ProxyConfig `yaml:"proxy"`
+	ProxyDomains     []string    `yaml:"proxy_domains"`
+	ProxyDomainsFile string      `yaml:"proxy_domains_file"`
+	AllowClients     []string    `yaml:"allow_clients"`
 }
 
 type DNSConfig struct {
-	Listen    string `yaml:"listen"`
-	Upstream  string `yaml:"upstream"`
-	Network   string `yaml:"network"`
-	ProxyIPv4 string `yaml:"proxy_ipv4"`
-	ProxyIPv6 string `yaml:"proxy_ipv6"`
-	TTL       uint32 `yaml:"ttl"`
+	Listen     string `yaml:"listen"`
+	UDPEnabled bool   `yaml:"udp_enabled"`
+	Upstream   string `yaml:"upstream"`
+	Network    string `yaml:"network"`
+	ProxyIPv4  string `yaml:"proxy_ipv4"`
+	ProxyIPv6  string `yaml:"proxy_ipv6"`
+	TTL        uint32 `yaml:"ttl"`
 }
 
 type ProxyConfig struct {
@@ -42,11 +47,46 @@ func Load(path string) (Config, error) {
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return Config{}, err
 	}
+	if err := config.loadProxyDomainsFile(path); err != nil {
+		return Config{}, err
+	}
 	config.setDefaults()
 	if err := config.validate(); err != nil {
 		return Config{}, err
 	}
 	return config, nil
+}
+
+func (config *Config) loadProxyDomainsFile(configPath string) error {
+	if strings.TrimSpace(config.ProxyDomainsFile) == "" {
+		return nil
+	}
+
+	domainsPath := strings.TrimSpace(config.ProxyDomainsFile)
+	if !filepath.IsAbs(domainsPath) {
+		domainsPath = filepath.Join(filepath.Dir(configPath), domainsPath)
+	}
+	file, err := os.Open(domainsPath)
+	if err != nil {
+		return fmt.Errorf("读取 proxy_domains_file %q 失败: %w", domainsPath, err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if comment := strings.IndexByte(line, '#'); comment >= 0 {
+			line = strings.TrimSpace(line[:comment])
+		}
+		if line != "" {
+			config.ProxyDomains = append(config.ProxyDomains, line)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("读取 proxy_domains_file %q 失败: %w", domainsPath, err)
+	}
+	return nil
 }
 
 func (config *Config) setDefaults() {
@@ -93,7 +133,7 @@ func (config Config) validate() error {
 		return fmt.Errorf("dns.proxy_ipv6 不是有效的 IPv6 地址")
 	}
 	if len(config.ProxyDomains) == 0 {
-		return fmt.Errorf("proxy_domains 不能为空")
+		return fmt.Errorf("proxy_domains 和 proxy_domains_file 不能同时为空")
 	}
 	return nil
 }
